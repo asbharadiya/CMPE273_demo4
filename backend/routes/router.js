@@ -1,6 +1,18 @@
 var multer = require('multer');
+var fs = require('fs');
 
-var upload = multer({storage: multer.memoryStorage()});
+var storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+    	var folderPath = '../tmp/'+Date.now()+'/';
+    	fs.mkdirSync(folderPath);
+    	cb(null, folderPath)
+    },
+    filename: function (req, file, cb) {
+    	cb(null, file.originalname)
+    }
+});
+
+var upload = multer({storage: storage});
 
 module.exports = function(router,passport) {
 

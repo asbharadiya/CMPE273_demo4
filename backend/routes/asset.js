@@ -1,10 +1,11 @@
 var kafka = require('./kafka/client');
 
 function addAsset(req,res){
-	kafka.make_request('kafkademo','addAsset',{
+    kafka.make_request('kafkademo','addAsset',{
 		user_id:req.user._id,
         file:req.file
 	},function(err,result){
+        console.log(err);
         if(err) {
             return res.status(500).json({status:500,statusText:"Internal server error"});
         } else {
