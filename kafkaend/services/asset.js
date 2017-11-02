@@ -21,22 +21,39 @@ function addAsset(msg, callback){
                     if(count > 0){
                         new_filename = [new_filename.substring(0, new_filename.lastIndexOf(".")), "(", count, ")",new_filename.substring(new_filename.lastIndexOf("."), new_filename.length)].join('');
                     }
-                    coll.insert({
-                        owner_id:new ObjectId(msg.user_id),
-                        name:new_filename,
-                        original_name:msg.file.originalname,
-                        filesystem_path:msg.file.path
-                    }, function(err,result){
-                        if(err) {
-                            res.code = 500;
-                            res.message = "Internal server error";
-                            callback(null, res);
-                        } else {
-                            res.code = 200;
-                            res.message = "Success";
-                            callback(null, res);
-                        }     
-                    });
+                    var fileId = new ObjectId();
+                    var gridStore = new GridStore(mongo.getDb(), fileId, new_filename, 'w', {root:'assets',content_type:msg.file.mimetype,chunk_size:msg.file.size});
+                    gridStore.open(function(err, gridStore) {
+                        gridStore.write(new Buffer(msg.combined_chunks_data), function(err, gridResult) {
+                            if (err) {
+                                gridStore.close(function(err, gridResult) {
+                                    res.code = 500;
+                                    res.message = "Error saving file to database";
+                                    callback(null, res);
+                                });
+                            } else {
+                                gridStore.close(function(err, gridResult) {
+                                    var curr_date = new Date();
+                                    coll.insert({
+                                        owner_id:new ObjectId(msg.user_id),
+                                        name:new_filename,
+                                        original_name:msg.file.originalname,
+                                        file_id:fileId
+                                    }, function(err,result){
+                                        if(err) {
+                                            res.code = 500;
+                                            res.message = "Internal server error";
+                                            callback(null, res);
+                                        } else {
+                                            res.code = 200;
+                                            res.message = "Success";
+                                            callback(null, res);
+                                        }     
+                                    });
+                                });
+                            }
+                        })
+                    })
                 }
             })
         })

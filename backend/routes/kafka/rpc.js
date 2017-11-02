@@ -17,7 +17,60 @@ function KafkaRPC(){
     this.producer = this.connection.getProducer();
 }
 
-KafkaRPC.prototype.makeRequest = function(topic_name, key, content, callback, chunkKey){
+KafkaRPC.prototype.makeRequest = function(topic_name, key, content, callback){
+
+    self = this;
+    //generate a unique correlation id for this call
+    var correlationId = crypto.randomBytes(16).toString('hex');
+    
+    //create a timeout for what should happen if we don't get a response
+    var tId = setTimeout(function(corr_id){
+        //if this ever gets called we didn't get a response in a
+        //timely fashion
+        callback(new Error("timeout " + corr_id));
+        //delete the entry from hash
+        delete self.requests[corr_id];
+    }, TIMEOUT, correlationId);
+
+    //create a request entry to store in a hash
+    var entry = {
+        callback:callback,
+        timeout: tId //the id for the timeout so we can clear it
+    };
+    //put the entry in the hash so we can match the response later
+    self.requests[correlationId]=entry;
+
+    //make sure we have a response topic
+    self.setupResponseQueue(self.producer,topic_name,function(){
+        //put the request on a topic
+        var km = new KeyedMessage('key', key)
+        var payloads = [
+            { 
+                topic: topic_name, 
+                messages: JSON.stringify({
+                    correlationId:correlationId,
+                    replyTo:kafkaResponseTopic,
+                    data:content,
+                    km
+                }),
+                partition:0
+            }
+        ];
+        self.producer.send(payloads, function(err, data){
+            if(err) {
+                var entry = self.requests[correlationId];
+                //make sure we don't timeout by clearing it
+                clearTimeout(entry.timeout);
+                //delete the entry from hash
+                delete self.requests[correlationId];
+                //callback, no err
+                entry.callback(err);
+            }
+        });
+    });
+};
+
+KafkaRPC.prototype.makeChunkedRequest = function(topic_name, key, content, chunks, callback){
 
     self = this;
     //generate a unique correlation id for this call
@@ -44,31 +97,39 @@ KafkaRPC.prototype.makeRequest = function(topic_name, key, content, callback, ch
     self.setupResponseQueue(self.producer,topic_name,function(){
         //put the request on a topic
         var km = new KeyedMessage('key', key)
-        var chunkKM = new KeyedMessage('key', chunkKey)
-        var payloads = [
-            { 
-                topic: topic_name, 
-                messages: JSON.stringify({
-                    correlationId:correlationId,
-                    replyTo:kafkaResponseTopic,
-                    data:content,
-                    km,
-                    chunkKM
-                }),
-                partition:0
-            }
-        ];
-        self.producer.send(payloads, function(err, data){
-            if(err) {
-                var entry = self.requests[correlationId];
-                //make sure we don't timeout by clearing it
-                clearTimeout(entry.timeout);
-                //delete the entry from hash
-                delete self.requests[correlationId];
-                //callback, no err
-                entry.callback(err);
-            }
-        });
+
+        for(var i=0;i<chunks.length;i++){
+            var payloads = [
+                { 
+                    topic: topic_name, 
+                    messages: JSON.stringify({
+                        correlationId:correlationId,
+                        replyTo:kafkaResponseTopic,
+                        data:content,
+                        //chunk info
+                        chunk:chunks[i],
+                        chunk_no:i,
+                        total_chunks:chunks.length,
+                        is_chunk_data:true,
+                        //
+                        km
+                    }),
+                    partition:0
+                }
+            ];
+            self.producer.send(payloads, function(err, data){
+                if(err) {
+                    var entry = self.requests[correlationId];
+                    //make sure we don't timeout by clearing it
+                    clearTimeout(entry.timeout);
+                    //delete the entry from hash
+                    delete self.requests[correlationId];
+                    //callback, no err
+                    entry.callback(err);
+                }
+            });
+        }
+
     });
 };
 
