@@ -1,5 +1,6 @@
 var crypto = require('crypto');
 var conn = require('./connection');
+var kafkaResponseTopic = require('../config').kafkaResponseTopic;
 
 var KeyedMessage = require('kafka-node').KeyedMessage;
 
@@ -16,7 +17,7 @@ function KafkaRPC(){
     this.producer = this.connection.getProducer();
 }
 
-KafkaRPC.prototype.makeRequest = function(topic_name, key, content, callback){
+KafkaRPC.prototype.makeRequest = function(topic_name, key, content, callback, chunkKey){
 
     self = this;
     //generate a unique correlation id for this call
@@ -43,21 +44,30 @@ KafkaRPC.prototype.makeRequest = function(topic_name, key, content, callback){
     self.setupResponseQueue(self.producer,topic_name,function(){
         //put the request on a topic
         var km = new KeyedMessage('key', key)
+        var chunkKM = new KeyedMessage('key', chunkKey)
         var payloads = [
             { 
                 topic: topic_name, 
                 messages: JSON.stringify({
                     correlationId:correlationId,
-                    replyTo:'kafkademo_response_topic',
+                    replyTo:kafkaResponseTopic,
                     data:content,
-                    km
+                    km,
+                    chunkKM
                 }),
                 partition:0
             }
         ];
         self.producer.send(payloads, function(err, data){
-            if(err)
-                callback(err);
+            if(err) {
+                var entry = self.requests[correlationId];
+                //make sure we don't timeout by clearing it
+                clearTimeout(entry.timeout);
+                //delete the entry from hash
+                delete self.requests[correlationId];
+                //callback, no err
+                entry.callback(err);
+            }
         });
     });
 };
@@ -70,24 +80,23 @@ KafkaRPC.prototype.setupResponseQueue = function(producer,topic_name, next){
     self = this;
 
     //subscribe to messages
-    self.connection.getConsumer('kafkademo_response_topic', function(consumer){
-        consumer.on('message', function (message) {
-            var data = JSON.parse(message.value);
-            //get the correlationId
-            var correlationId = data.correlationId;
-            //is it a response to a pending request
-            if(correlationId in self.requests){
-                //retrieve the request entry
-                var entry = self.requests[correlationId];
-                //make sure we don't timeout by clearing it
-                clearTimeout(entry.timeout);
-                //delete the entry from hash
-                delete self.requests[correlationId];
-                //callback, no err
-                entry.callback(null, data.data);
-            }
-        });
-        self.response_queue = true;
-        next();
+    var consumer = self.connection.getConsumer(kafkaResponseTopic);
+    consumer.on('message', function (message) {
+        var data = JSON.parse(message.value);
+        //get the correlationId
+        var correlationId = data.correlationId;
+        //is it a response to a pending request
+        if(correlationId in self.requests){
+            //retrieve the request entry
+            var entry = self.requests[correlationId];
+            //make sure we don't timeout by clearing it
+            clearTimeout(entry.timeout);
+            //delete the entry from hash
+            delete self.requests[correlationId];
+            //callback, no err
+            entry.callback(null, data.data);
+        }
     });
+    self.response_queue = true;
+    return next();
 };

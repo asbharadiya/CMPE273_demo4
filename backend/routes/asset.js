@@ -5,13 +5,13 @@ function addAsset(req,res){
 		user_id:req.user._id,
         file:req.file
 	},function(err,result){
-        console.log(err);
+        console.log(err)
         if(err) {
             return res.status(500).json({status:500,statusText:"Internal server error"});
         } else {
             return res.status(result.code).json({status:result.code,statusText:result.message});
         }
-    });
+    },req.file.originalname)
 }
 
 function getAssets(req,res){

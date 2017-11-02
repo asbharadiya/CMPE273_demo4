@@ -48,6 +48,7 @@ function addAsset(msg, callback){
 }
 
 function getAssets(msg, callback){
+    console.log("getting assets in kafka...")
     var res = {};
     mongo.getCollection('assets', function(err,coll){
         coll.find({

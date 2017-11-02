@@ -1,27 +1,21 @@
 var kafka = require('kafka-node');
 
 function ConnectionProvider() {
-
-    this.getConsumer = function(topic_name,callback) {
+    this.getConsumer = function(topic_name) {
         if (!this.kafkaConsumerConnection) {
-            var _this = this;
-            var client = new kafka.Client("localhost:2181");
-            client.on('ready', function () { 
-                client.loadMetadataForTopics([topic_name], function (error, results) {
-                    _this.kafkaConsumerConnection = new kafka.Consumer(client,[{ topic: topic_name, partition: 0 }]);
-                    callback(_this.kafkaConsumerConnection);
-                });
-            })
-        } else {
-            callback(this.kafkaConsumerConnection);
+            this.client = new kafka.Client("localhost:2181");
+            this.kafkaConsumerConnection = new kafka.Consumer(this.client,[ { topic: topic_name, partition: 0 }]);
+            this.client.on('ready', function () { console.log('consumer ready!') })
         }
+        return this.kafkaConsumerConnection;
     };
 
+    //Code will be executed when we start Producer
     this.getProducer = function() {
         if (!this.kafkaProducerConnection) {
-            var client = new kafka.Client("localhost:2181");
-            this.kafkaProducerConnection = new kafka.HighLevelProducer(client);
-            console.log('producer ready');
+            this.client = new kafka.Client("localhost:2181");
+            this.kafkaProducerConnection = new kafka.HighLevelProducer(this.client);
+            this.client.on('ready', function () { console.log('producer ready!') })
         }
         return this.kafkaProducerConnection;
     };
