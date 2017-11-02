@@ -24,7 +24,7 @@ function addAsset(msg, callback){
                     var fileId = new ObjectId();
                     var gridStore = new GridStore(mongo.getDb(), fileId, new_filename, 'w', {root:'assets',content_type:msg.file.mimetype,chunk_size:msg.file.size});
                     gridStore.open(function(err, gridStore) {
-                        gridStore.write(new Buffer(msg.combined_chunks_data), function(err, gridResult) {
+                        gridStore.write(new Buffer(msg.buffer), function(err, gridResult) {
                             if (err) {
                                 gridStore.close(function(err, gridResult) {
                                     res.code = 500;

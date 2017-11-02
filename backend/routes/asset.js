@@ -1,30 +1,23 @@
 var kafka = require('./kafka/client');
-var crypto = require('crypto');
 
 var CHUNK_SIZE = 100 * 1024;
 
 function sliceMyString(str){
     var slices = [];
-    while(str != ''){
-        var lastSpace = 0;
-
-        for(var i = 0; i < str.length && i < CHUNK_SIZE; i ++){
-            if(str[i] == ' '){
-                lastSpace = i;
-            }
-            if(i == str.length - 1){
-                lastSpace = str.length;
-            }
+    while(str !== ''){
+        if(str.length > CHUNK_SIZE){
+            slices.push(str.slice(0, CHUNK_SIZE));
+            str = str.slice(CHUNK_SIZE);
+        } else {
+            slices.push(str);
+            break;
         }
-        slices.push(str.slice(0, lastSpace));
-        str = str.slice(lastSpace);
     }
     return slices;
 }
 
 function addAsset(req,res){
-    // return res.status(200).json({status:200,statusText:"Internal server error"});
-    var chunks = sliceMyString(req.file.buffer);
+    var chunks = sliceMyString(req.file.buffer.toString('base64'));
     kafka.make_chunked_request('kafkademo','addAsset',{
         user_id:req.user._id,
         file:{
@@ -33,7 +26,6 @@ function addAsset(req,res){
             size:req.file.size
         }
     }, chunks, function(err,result){
-        console.log(err);
         if(err) {
             return res.status(500).json({status:500,statusText:"Internal server error"});
         } else {

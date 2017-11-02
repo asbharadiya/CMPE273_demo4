@@ -37,10 +37,11 @@ consumer.on('message', function (message) {
         }
         if(chunk_request.chunks.length === chunk_request.total_chunks){
             chunk_request.chunks.sort(function(a,b) {return (a.order > b.order) ? 1 : ((b.order > a.order) ? -1 : 0);});
-            data.data.combined_chunks_data = "";
+            var combined_chunks_data = "";
             for (var i=0;i<chunk_request.chunks.length;i++) {
-                data.data.combined_chunks_data += chunk_request.chunks[i].data.data;
+                combined_chunks_data += chunk_request.chunks[i].data;
             }
+            data.data.buffer = Buffer.from(combined_chunks_data,'base64');
             makeServiceCall(data);
         }
     } else {
